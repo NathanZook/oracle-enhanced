@@ -107,6 +107,22 @@ module ActiveRecord
     end
     private :enhanced_write_lobs
     
+    def quote_bound_value(value) #:nodoc:
+      if value.respond_to?(:map) && !value.acts_like?(:string)
+        if value.respond_to?(:empty?) && value.empty?
+          connection.quote(nil)
+        else
+          join_quoted_values_for_condition(value.map{|v| connection.quote(v)})
+        end
+      else
+        connection.quote(value)
+      end
+    end
+
+    def join_quoted_values_for_condition(values)
+      values * ','
+    end
+
     class << self
       # patch ORDER BY to work with LOBs
       def add_order_with_lobs!(sql, order, scope = :auto)
