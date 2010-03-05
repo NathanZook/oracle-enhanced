@@ -119,8 +119,18 @@ module ActiveRecord
       end
     end
 
+    ORACLE_IN_LIMIT = 1000
+
     def join_quoted_values_for_condition(values)
-      values * ','
+      return values * ',' unless values.length > ORACLE_IN_LIMIT
+
+      values.uniq!
+      return values * ',' unless values.length > ORACLE_IN_LIMIT
+
+      quoted_chunks = values.in_groups_of(ORACLE_IN_LIMIT) do |chunk|
+        "(SELECT * FROM TABLE(sys.odcinumberlist(#{chunk * ','})))"
+      end
+      quoted_chunks * " UNION "
     end
 
     class << self
