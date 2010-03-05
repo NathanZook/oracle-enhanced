@@ -119,6 +119,22 @@ module ActiveRecord
       end
     end
 
+    def update_counters(id, counters)
+      updates = counters.inject([]) { |list, (counter_name, increment)|
+        sign = increment < 0 ? "-" : "+"
+        list << "#{connection.quote_column_name(counter_name)} = COALESCE(#{connection.quote_column_name(counter_name)}, 0) #{sign} #{increment.abs}"
+      }.join(", ")
+
+      if id.is_a?(Array)
+        ids_list = join_quoted_values_for_condition(id.map{|i| quote_value(i)})
+        condition = "IN  (#{ids_list})"
+      else
+        condition = "= #{quote_value(id)}"
+      end
+
+      update_all(updates, "#{connection.quote_column_name(primary_key)} #{condition}")
+    end
+
     ORACLE_IN_LIMIT = 1000
 
     def join_quoted_values_for_condition(values)
