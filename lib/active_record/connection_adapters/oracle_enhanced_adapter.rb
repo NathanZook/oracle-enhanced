@@ -107,49 +107,50 @@ module ActiveRecord
     end
     private :enhanced_write_lobs
     
-    def quote_bound_value(value) #:nodoc:
-      if value.respond_to?(:map) && !value.acts_like?(:string)
-        if value.respond_to?(:empty?) && value.empty?
-          connection.quote(nil)
-        else
-          join_quoted_values_for_condition(value.map{|v| connection.quote(v)})
-        end
-      else
-        connection.quote(value)
-      end
-    end
-
-    def update_counters(id, counters)
-      updates = counters.inject([]) { |list, (counter_name, increment)|
-        sign = increment < 0 ? "-" : "+"
-        list << "#{connection.quote_column_name(counter_name)} = COALESCE(#{connection.quote_column_name(counter_name)}, 0) #{sign} #{increment.abs}"
-      }.join(", ")
-
-      if id.is_a?(Array)
-        ids_list = join_quoted_values_for_condition(id.map{|i| quote_value(i)})
-        condition = "IN  (#{ids_list})"
-      else
-        condition = "= #{quote_value(id)}"
-      end
-
-      update_all(updates, "#{connection.quote_column_name(primary_key)} #{condition}")
-    end
-
-    ORACLE_IN_LIMIT = 1000
-
-    def join_quoted_values_for_condition(values)
-      return values * ',' unless values.length > ORACLE_IN_LIMIT
-
-      values.uniq!
-      return values * ',' unless values.length > ORACLE_IN_LIMIT
-
-      quoted_chunks = values.in_groups_of(ORACLE_IN_LIMIT) do |chunk|
-        "(SELECT * FROM TABLE(sys.odcinumberlist(#{chunk * ','})))"
-      end
-      quoted_chunks * " UNION "
-    end
-
     class << self
+      def quote_bound_value(value) #:nodoc:
+        if value.respond_to?(:map) && !value.acts_like?(:string)
+          if value.respond_to?(:empty?) && value.empty?
+            connection.quote(nil)
+          else
+            join_quoted_values_for_condition(value.map {|v| connection.quote(v)})
+          end
+        else
+          connection.quote(value)
+        end
+      end
+
+      def update_counters(id, counters)
+        updates = counters.inject([]) { |list, (counter_name, increment)|
+          sign = increment < 0 ? "-" : "+"
+          list << "#{connection.quote_column_name(counter_name)} = COALESCE(#{connection.quote_column_name(counter_name)}, 0) #{sign}"
+        }.join(", ")
+
+        if id.is_a?(Array)
+          ids_list = join_quoted_values_for_condition(id.map{|i| quote_value(i)})
+          condition = "IN  (#{ids_list})"
+        else
+          condition = "= #{quote_value(id)}"
+        end
+
+        update_all(updates, "#{connection.quote_column_name(primary_key)} #{condition}")
+      end
+
+      ORACLE_IN_LIMIT = 1000
+      ORACLE_ODCINUMBERLIST_ARGS_LIMIT = 999
+
+      def join_quoted_values_for_condition(values)
+        return values * ',' unless values.length > ORACLE_IN_LIMIT
+
+        values.uniq!
+        return values * ',' unless values.length > ORACLE_IN_LIMIT
+
+        quoted_chunks = values.in_groups_of(ORACLE_ODCINUMBERLIST_ARGS_LIMIT, false).map do |chunk|
+          "(SELECT * FROM TABLE(sys.odcinumberlist(#{chunk * ','})))"
+        end
+        quoted_chunks * " UNION "
+      end
+
       # patch ORDER BY to work with LOBs
       def add_order_with_lobs!(sql, order, scope = :auto)
         if connection.is_a?(ConnectionAdapters::OracleEnhancedAdapter)
